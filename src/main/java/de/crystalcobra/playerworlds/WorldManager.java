@@ -43,6 +43,8 @@ import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
 import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
 import net.minecraft.world.level.levelgen.flat.FlatLevelGeneratorSettings;
 import net.minecraft.world.level.storage.DerivedLevelData;
+import net.minecraft.world.level.timers.TimerCallbacks;
+import net.minecraft.world.level.timers.TimerQueue;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.level.LevelEvent;
 
@@ -161,11 +163,12 @@ public final class WorldManager {
         ResourceKey<Level> key = keyFor(entry.owner());
         ServerLevel overworld = server.overworld();
         LevelStem stem = new LevelStem(overworldStem(server).type(), generatorFor(server, entry.type()));
-        DerivedLevelData levelData = new DerivedLevelData(server.getWorldData(), server.getWorldData().overworldData());
+        long initialDayTime = entry.dayTime() < 0 ? overworld.getDayTime() : entry.dayTime();
+        PlayerWorldLevelData levelData = new PlayerWorldLevelData(server, initialDayTime);
         long seed = entry.seed();
 
         ServerLevel level = new ServerLevel(server, server.executor, server.storageSource, levelData, key, stem,
-                NO_PROGRESS, false, BiomeManager.obfuscateSeed(seed), List.of(), false, null) {
+                NO_PROGRESS, false, BiomeManager.obfuscateSeed(seed), List.of(), true, null) {
             @Override
             public long getSeed() {
                 return seed;
@@ -228,7 +231,43 @@ public final class WorldManager {
         player.sendSystemMessage(Component.literal("Welt wird geladen, bitte warten...").withStyle(ChatFormatting.YELLOW));
     }
 
+    /** Level data that shares everything with the overworld except its own day/night clock. */
+    private static final class PlayerWorldLevelData extends DerivedLevelData {
+        private final TimerQueue<MinecraftServer> scheduledEvents = new TimerQueue<>(TimerCallbacks.SERVER_CALLBACKS);
+        private long gameTime;
+        private long dayTime;
+
+        PlayerWorldLevelData(MinecraftServer server, long dayTime) {
+            super(server.getWorldData(), server.getWorldData().overworldData());
+            this.gameTime = server.overworld().getGameTime();
+            this.dayTime = dayTime;
+        }
+
+        @Override public long getGameTime() { return gameTime; }
+        @Override public void setGameTime(long gameTime) { this.gameTime = gameTime; }
+        @Override public long getDayTime() { return dayTime; }
+        @Override public void setDayTime(long dayTime) { this.dayTime = dayTime; }
+        @Override public TimerQueue<MinecraftServer> getScheduledEvents() { return scheduledEvents; }
+    }
+
+    private static final int SAVE_TIME_INTERVAL = 20 * 30;
+
+    private static void saveDayTimes(MinecraftServer server) {
+        if (server.getTickCount() % SAVE_TIME_INTERVAL != 0) {
+            return;
+        }
+        PlayerWorldsData data = PlayerWorldsData.get(server);
+        for (PlayerWorldsData.Entry entry : data.worlds().values()) {
+            ServerLevel level = getWorld(server, entry.owner());
+            if (level != null) {
+                entry.setDayTime(level.getDayTime());
+            }
+        }
+        data.setDirty();
+    }
+
     public static void tick(MinecraftServer server) {
+        saveDayTimes(server);
         if (PENDING.isEmpty()) {
             return;
         }

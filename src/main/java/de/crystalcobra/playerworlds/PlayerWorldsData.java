@@ -45,6 +45,7 @@ public class PlayerWorldsData extends SavedData {
         private final Set<UUID> members = new LinkedHashSet<>();
         private Access access = Access.MEMBERS;
         private String name = "";
+        private long dayTime = -1;
 
         public Entry(UUID owner, WorldType type, long seed) {
             this.owner = owner;
@@ -60,6 +61,9 @@ public class PlayerWorldsData extends SavedData {
         public void setAccess(Access access) { this.access = access; }
         public String name() { return name; }
         public void setName(String name) { this.name = name; }
+        /** Saved day time, or -1 if the world has never been ticked. */
+        public long dayTime() { return dayTime; }
+        public void setDayTime(long dayTime) { this.dayTime = dayTime; }
 
         /** Whether {@code player} may enter this world. */
         public boolean canEnter(UUID player) {
@@ -117,6 +121,7 @@ public class PlayerWorldsData extends SavedData {
                 e.access = Access.OPEN;
             }
             e.name = c.getString("name");
+            e.dayTime = c.contains("dayTime") ? c.getLong("dayTime") : -1;
             for (Tag m : c.getList("members", Tag.TAG_INT_ARRAY)) {
                 e.members.add(NbtUtils.loadUUID(m));
             }
@@ -135,6 +140,7 @@ public class PlayerWorldsData extends SavedData {
             c.putLong("seed", e.seed());
             c.putString("access", e.access.name());
             c.putString("name", e.name);
+            c.putLong("dayTime", e.dayTime);
             ListTag members = new ListTag();
             for (UUID m : e.members) {
                 members.add(NbtUtils.createUUID(m));
