@@ -44,10 +44,9 @@ public final class WorldCommands {
             return 0;
         }
 
-        ctx.getSource().sendSuccess(() -> Component.literal("Deine Welt wird erstellt...").withStyle(ChatFormatting.YELLOW), false);
+        ctx.getSource().sendSuccess(() -> Component.literal("Deine Welt wurde erstellt!").withStyle(ChatFormatting.GREEN), false);
         ServerLevel level = WorldManager.createWorld(server, player.getUUID(), type);
         WorldManager.teleportToWorld(player, level);
-        ctx.getSource().sendSuccess(() -> Component.literal("Willkommen in deiner eigenen Welt!").withStyle(ChatFormatting.GREEN), false);
         return 1;
     }
 

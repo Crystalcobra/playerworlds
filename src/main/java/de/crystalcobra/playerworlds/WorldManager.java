@@ -2,6 +2,9 @@ package de.crystalcobra.playerworlds;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.Iterator;
 import java.util.List;
 import java.util.UUID;
 
@@ -12,14 +15,17 @@ import org.slf4j.Logger;
 
 import com.mojang.logging.LogUtils;
 
+import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.TicketType;
 import net.minecraft.server.level.progress.ChunkProgressListener;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
@@ -45,6 +51,27 @@ public final class WorldManager {
         @Override public void start() {}
         @Override public void stop() {}
     };
+
+    private static final int SPAWN_RADIUS = 2;
+    private static final int SPAWN_CHUNK_COUNT = (2 * SPAWN_RADIUS + 1) * (2 * SPAWN_RADIUS + 1);
+    private static final TicketType<ChunkPos> SPAWN_TICKET =
+            TicketType.create(PlayerWorlds.MODID + "_spawn", Comparator.comparingLong(ChunkPos::toLong), 20 * 60 * 5);
+    private static final List<PendingTeleport> PENDING = new ArrayList<>();
+
+    private static final class PendingTeleport {
+        private final UUID player;
+        private final ResourceKey<Level> level;
+        private int ticks;
+
+        PendingTeleport(UUID player, ResourceKey<Level> level, int ticks) {
+            this.player = player;
+            this.level = level;
+            this.ticks = ticks;
+        }
+
+        UUID player() { return player; }
+        ResourceKey<Level> level() { return level; }
+    }
 
     private WorldManager() {}
 
@@ -135,14 +162,58 @@ public final class WorldManager {
         LOGGER.info("Deleted player world {}", key.location());
     }
 
-    /** Teleports the player to a safe spot near the world origin. */
+    /**
+     * Queues a teleport to the world origin. The spawn chunks are generated asynchronously first so the
+     * server thread never blocks on world generation; the actual teleport happens in {@link #tick}.
+     */
     public static void teleportToWorld(ServerPlayer player, ServerLevel level) {
-        BlockPos pos = findSafeSpawn(level);
-        player.teleportTo(level, pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, player.getYRot(), player.getXRot());
+        level.getChunkSource().addRegionTicket(SPAWN_TICKET, ChunkPos.ZERO, SPAWN_RADIUS + 1, ChunkPos.ZERO);
+        PENDING.removeIf(p -> p.player().equals(player.getUUID()));
+        PENDING.add(new PendingTeleport(player.getUUID(), level.dimension(), 0));
+        player.sendSystemMessage(Component.literal("Deine Welt wird generiert, bitte warten...").withStyle(ChatFormatting.YELLOW));
+    }
+
+    public static void tick(MinecraftServer server) {
+        if (PENDING.isEmpty()) {
+            return;
+        }
+        Iterator<PendingTeleport> it = PENDING.iterator();
+        while (it.hasNext()) {
+            PendingTeleport pending = it.next();
+            ServerPlayer player = server.getPlayerList().getPlayer(pending.player());
+            ServerLevel level = server.getLevel(pending.level());
+            if (player == null || level == null) {
+                it.remove();
+                continue;
+            }
+            int loaded = countLoadedSpawnChunks(level);
+            if (loaded < SPAWN_CHUNK_COUNT) {
+                pending.ticks++;
+                if (pending.ticks % 100 == 0) {
+                    player.sendSystemMessage(Component.literal("Welt wird generiert... " + loaded + "/" + SPAWN_CHUNK_COUNT + " Chunks")
+                            .withStyle(ChatFormatting.GRAY));
+                }
+                continue;
+            }
+            it.remove();
+            BlockPos pos = findSafeSpawn(level);
+            player.teleportTo(level, pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, player.getYRot(), player.getXRot());
+        }
+    }
+
+    private static int countLoadedSpawnChunks(ServerLevel level) {
+        int loaded = 0;
+        for (int x = -SPAWN_RADIUS; x <= SPAWN_RADIUS; x++) {
+            for (int z = -SPAWN_RADIUS; z <= SPAWN_RADIUS; z++) {
+                if (level.getChunkSource().getChunkNow(x, z) != null) {
+                    loaded++;
+                }
+            }
+        }
+        return loaded;
     }
 
     private static BlockPos findSafeSpawn(ServerLevel level) {
-        level.getChunk(0, 0);
         int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, 0, 0);
         if (y <= level.getMinBuildHeight()) {
             y = level.getSeaLevel();
