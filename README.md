@@ -16,8 +16,9 @@ NeoForge-Mod für Minecraft 1.21.1 (z.B. All The Mods 10): Jeder Spieler bekommt
 | `/worldinvite <spieler>` | Gibt einem Spieler Zugang zu deiner Welt |
 | `/worldkick <spieler>` | Entzieht den Zugang (Spieler wird ggf. rausteleportiert) |
 | `/worldmembers` | Zeigt Status und eingeladene Spieler |
-| `/lockworld` | Sperrt deine Welt: nur du und Eingeladene kommen rein (Standard) |
-| `/unlockworld` | Öffnet deine Welt für alle |
+| `/lockworld` | Sperrt deine Welt: nur du kommst rein (Gäste werden rausteleportiert) |
+| `/unlockworld` | Normalzustand (Standard): du und Eingeladene kommen rein |
+| `/openworld` | Öffnet deine Welt für alle |
 | `/visitworld <name oder spieler>` | Teleportiert dich in eine andere Welt (per Weltname oder Besitzer) |
 
 Jeder Spieler kann nur eine Welt gleichzeitig haben. Welten bleiben nach einem Server-Neustart erhalten

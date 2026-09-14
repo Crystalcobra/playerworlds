@@ -20,12 +20,30 @@ import net.minecraft.world.level.saveddata.SavedData;
 public class PlayerWorldsData extends SavedData {
     private static final String NAME = PlayerWorlds.MODID + "_worlds";
 
+    public enum Access {
+        /** Only the owner. */
+        LOCKED,
+        /** Owner and invited members. */
+        MEMBERS,
+        /** Everyone. */
+        OPEN;
+
+        static Access byName(String name) {
+            for (Access a : values()) {
+                if (a.name().equalsIgnoreCase(name)) {
+                    return a;
+                }
+            }
+            return MEMBERS;
+        }
+    }
+
     public static final class Entry {
         private final UUID owner;
         private final WorldType type;
         private final long seed;
         private final Set<UUID> members = new LinkedHashSet<>();
-        private boolean locked = true;
+        private Access access = Access.MEMBERS;
         private String name = "";
 
         public Entry(UUID owner, WorldType type, long seed) {
@@ -38,14 +56,16 @@ public class PlayerWorldsData extends SavedData {
         public WorldType type() { return type; }
         public long seed() { return seed; }
         public Set<UUID> members() { return members; }
-        public boolean locked() { return locked; }
-        public void setLocked(boolean locked) { this.locked = locked; }
+        public Access access() { return access; }
+        public void setAccess(Access access) { this.access = access; }
         public String name() { return name; }
         public void setName(String name) { this.name = name; }
 
         /** Whether {@code player} may enter this world. */
         public boolean canEnter(UUID player) {
-            return !locked || owner.equals(player) || members.contains(player);
+            return owner.equals(player)
+                    || access == Access.OPEN
+                    || (access == Access.MEMBERS && members.contains(player));
         }
     }
 
@@ -91,7 +111,11 @@ public class PlayerWorldsData extends SavedData {
         for (Tag t : tag.getList("worlds", Tag.TAG_COMPOUND)) {
             CompoundTag c = (CompoundTag) t;
             Entry e = new Entry(c.getUUID("owner"), WorldType.byName(c.getString("type")), c.getLong("seed"));
-            e.locked = !c.contains("locked") || c.getBoolean("locked");
+            if (c.contains("access")) {
+                e.access = Access.byName(c.getString("access"));
+            } else if (c.contains("locked") && !c.getBoolean("locked")) {
+                e.access = Access.OPEN;
+            }
             e.name = c.getString("name");
             for (Tag m : c.getList("members", Tag.TAG_INT_ARRAY)) {
                 e.members.add(NbtUtils.loadUUID(m));
@@ -109,7 +133,7 @@ public class PlayerWorldsData extends SavedData {
             c.putUUID("owner", e.owner());
             c.putString("type", e.type().name());
             c.putLong("seed", e.seed());
-            c.putBoolean("locked", e.locked);
+            c.putString("access", e.access.name());
             c.putString("name", e.name);
             ListTag members = new ListTag();
             for (UUID m : e.members) {

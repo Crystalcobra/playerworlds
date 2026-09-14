@@ -59,8 +59,9 @@ public final class WorldCommands {
                         .executes(WorldCommands::kick)));
 
         dispatcher.register(Commands.literal("worldmembers").executes(WorldCommands::members));
-        dispatcher.register(Commands.literal("lockworld").executes(ctx -> setLocked(ctx, true)));
-        dispatcher.register(Commands.literal("unlockworld").executes(ctx -> setLocked(ctx, false)));
+        dispatcher.register(Commands.literal("lockworld").executes(ctx -> setAccess(ctx, PlayerWorldsData.Access.LOCKED)));
+        dispatcher.register(Commands.literal("unlockworld").executes(ctx -> setAccess(ctx, PlayerWorldsData.Access.MEMBERS)));
+        dispatcher.register(Commands.literal("openworld").executes(ctx -> setAccess(ctx, PlayerWorldsData.Access.OPEN)));
 
         dispatcher.register(Commands.literal("visitworld")
                 .then(Commands.argument("welt", StringArgumentType.greedyString())
@@ -182,31 +183,33 @@ public final class WorldCommands {
         String names = entry.members().stream()
                 .map(id -> nameOf(ctx.getSource().getServer(), id))
                 .collect(Collectors.joining(", "));
-        String state = entry.locked() ? "gesperrt (nur du und eingeladene Spieler)" : "offen (jeder darf rein)";
+        String state = switch (entry.access()) {
+            case LOCKED -> "gesperrt (nur du)";
+            case MEMBERS -> "normal (du und eingeladene Spieler)";
+            case OPEN -> "offen (jeder darf rein)";
+        };
         String world = displayName(ctx.getSource().getServer(), entry);
         ctx.getSource().sendSuccess(() -> Component.literal("\"" + world + "\" ist " + state + ". Eingeladen: "
                 + (names.isEmpty() ? "niemand" : names)).withStyle(ChatFormatting.AQUA), false);
         return 1;
     }
 
-    private static int setLocked(CommandContext<CommandSourceStack> ctx, boolean locked) throws CommandSyntaxException {
+    private static int setAccess(CommandContext<CommandSourceStack> ctx, PlayerWorldsData.Access access) throws CommandSyntaxException {
         ServerPlayer player = ctx.getSource().getPlayerOrException();
         MinecraftServer server = ctx.getSource().getServer();
         PlayerWorldsData.Entry entry = ownWorld(ctx, player);
         if (entry == null) {
             return 0;
         }
-        entry.setLocked(locked);
+        entry.setAccess(access);
         PlayerWorldsData.get(server).setDirty();
-        if (locked) {
-            WorldManager.evictUnauthorized(server, player.getUUID());
-            ctx.getSource().sendSuccess(() -> Component.literal(
-                    "Deine Welt ist jetzt gesperrt. Nur du und eingeladene Spieler kommen rein.").withStyle(ChatFormatting.GREEN), false);
-        } else {
-            ctx.getSource().sendSuccess(() -> Component.literal(
-                    "Deine Welt ist jetzt offen. Jeder kann sie mit /visitworld " + visitArg(server, entry) + " betreten.")
-                    .withStyle(ChatFormatting.GREEN), false);
-        }
+        WorldManager.evictUnauthorized(server, player.getUUID());
+        String msg = switch (access) {
+            case LOCKED -> "Deine Welt ist jetzt gesperrt. Nur du kommst rein.";
+            case MEMBERS -> "Deine Welt ist jetzt entsperrt. Du und eingeladene Spieler kommen rein.";
+            case OPEN -> "Deine Welt ist jetzt offen. Jeder kann sie mit /visitworld " + visitArg(server, entry) + " betreten.";
+        };
+        ctx.getSource().sendSuccess(() -> Component.literal(msg).withStyle(ChatFormatting.GREEN), false);
         return 1;
     }
 
