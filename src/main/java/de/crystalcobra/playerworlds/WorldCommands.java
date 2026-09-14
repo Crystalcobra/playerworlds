@@ -32,6 +32,10 @@ public final class WorldCommands {
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(Commands.literal("createworld")
                 .executes(ctx -> create(ctx, WorldType.VANILLA, null))
+                .then(Commands.literal("void")
+                        .executes(ctx -> create(ctx, WorldType.VOID, null))
+                        .then(Commands.argument("name", StringArgumentType.greedyString())
+                                .executes(ctx -> create(ctx, WorldType.VOID, StringArgumentType.getString(ctx, "name")))))
                 .then(Commands.literal("flat")
                         .executes(ctx -> create(ctx, WorldType.FLAT, null))
                         .then(Commands.argument("name", StringArgumentType.greedyString())

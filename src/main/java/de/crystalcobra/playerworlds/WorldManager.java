@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import javax.annotation.Nullable;
@@ -29,7 +30,11 @@ import net.minecraft.server.level.TicketType;
 import net.minecraft.server.level.progress.ChunkProgressListener;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
+import net.minecraft.core.Holder;
+import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.biome.BiomeManager;
+import net.minecraft.world.level.biome.Biomes;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.biome.BiomeSource;
 import net.minecraft.world.level.biome.MultiNoiseBiomeSource;
 import net.minecraft.world.level.biome.MultiNoiseBiomeSourceParameterLists;
@@ -290,10 +295,10 @@ public final class WorldManager {
                 continue;
             }
             it.remove();
-            BlockPos pos = findSafeSpawn(level);
-            player.teleportTo(level, pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, player.getYRot(), player.getXRot());
             UUID owner = ownerOf(level.dimension());
             PlayerWorldsData.Entry entry = owner == null ? null : PlayerWorldsData.get(server).get(owner);
+            BlockPos pos = findSafeSpawn(level, entry == null ? null : entry.type());
+            player.teleportTo(level, pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, player.getYRot(), player.getXRot());
             if (entry != null) {
                 player.sendSystemMessage(Component.literal("Willkommen in \"" + WorldCommands.displayName(server, entry) + "\"!")
                         .withStyle(ChatFormatting.GREEN));
@@ -313,7 +318,21 @@ public final class WorldManager {
         return loaded;
     }
 
-    private static BlockPos findSafeSpawn(ServerLevel level) {
+    private static final int VOID_PLATFORM_Y = 64;
+    private static final int VOID_PLATFORM_RADIUS = 2;
+
+    private static BlockPos findSafeSpawn(ServerLevel level, @Nullable WorldType type) {
+        if (type == WorldType.VOID) {
+            BlockPos center = new BlockPos(0, VOID_PLATFORM_Y, 0);
+            if (level.getBlockState(center).isAir()) {
+                for (int x = -VOID_PLATFORM_RADIUS; x <= VOID_PLATFORM_RADIUS; x++) {
+                    for (int z = -VOID_PLATFORM_RADIUS; z <= VOID_PLATFORM_RADIUS; z++) {
+                        level.setBlockAndUpdate(center.offset(x, 0, z), Blocks.GRASS_BLOCK.defaultBlockState());
+                    }
+                }
+            }
+            return center.above();
+        }
         int y = level.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, 0, 0);
         if (y <= level.getMinBuildHeight()) {
             y = level.getSeaLevel();
@@ -346,6 +365,10 @@ public final class WorldManager {
                     server.registryAccess().lookupOrThrow(Registries.BIOME),
                     server.registryAccess().lookupOrThrow(Registries.STRUCTURE_SET),
                     server.registryAccess().lookupOrThrow(Registries.PLACED_FEATURE)));
+            case VOID -> {
+                Holder<Biome> plains = server.registryAccess().lookupOrThrow(Registries.BIOME).getOrThrow(Biomes.PLAINS);
+                yield new FlatLevelSource(new FlatLevelGeneratorSettings(Optional.empty(), plains, List.of()));
+            }
         };
     }
 }
