@@ -198,6 +198,12 @@ public final class WorldManager {
         PlayerWorldsData.get(server).remove(owner);
 
         Path dir = server.storageSource.getDimensionPath(key);
+        Path expectedParent = server.storageSource.getDimensionPath(Level.OVERWORLD)
+                .resolve("dimensions").resolve(PlayerWorlds.MODID).toAbsolutePath().normalize();
+        if (!dir.toAbsolutePath().normalize().startsWith(expectedParent)) {
+            LOGGER.error("Refusing to delete {} - not inside {}", dir, expectedParent);
+            return;
+        }
         try {
             FileUtils.deleteDirectory(dir.toFile());
         } catch (IOException e) {
