@@ -6,9 +6,8 @@ NeoForge-Mod für Minecraft 1.21.1 (z.B. All The Mods 10): Jeder Spieler bekommt
 
 | Befehl | Beschreibung |
 |---|---|
-| `/createworld` | Erstellt deine eigene Welt (normale Overworld-Generierung, eigener Seed) und teleportiert dich hinein |
+| `/createworld` | Erstellt deine eigene Welt (Vanilla-Overworld-Generierung, eigener Seed) und teleportiert dich hinein |
 | `/createworld <name>` | Erstellt deine Welt mit einem Namen (z.B. `/createworld Meine Insel`) |
-| `/createworld vanilla [name]` | Nur Vanilla-Biome/-Terrain (schnellere Generierung, weniger Hänger bei großen Modpacks) |
 | `/createworld flat [name]` | Erstellt stattdessen eine Flachwelt |
 | `/renameworld <name>` | Benennt deine Welt um |
 | `/tpworld` | Teleportiert dich in deine Welt |

@@ -31,21 +31,13 @@ public final class WorldCommands {
 
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(Commands.literal("createworld")
-                .executes(ctx -> create(ctx, WorldType.NORMAL, null))
-                .then(Commands.literal("normal")
-                        .executes(ctx -> create(ctx, WorldType.NORMAL, null))
-                        .then(Commands.argument("name", StringArgumentType.greedyString())
-                                .executes(ctx -> create(ctx, WorldType.NORMAL, StringArgumentType.getString(ctx, "name")))))
-                .then(Commands.literal("vanilla")
-                        .executes(ctx -> create(ctx, WorldType.VANILLA, null))
-                        .then(Commands.argument("name", StringArgumentType.greedyString())
-                                .executes(ctx -> create(ctx, WorldType.VANILLA, StringArgumentType.getString(ctx, "name")))))
+                .executes(ctx -> create(ctx, WorldType.VANILLA, null))
                 .then(Commands.literal("flat")
                         .executes(ctx -> create(ctx, WorldType.FLAT, null))
                         .then(Commands.argument("name", StringArgumentType.greedyString())
                                 .executes(ctx -> create(ctx, WorldType.FLAT, StringArgumentType.getString(ctx, "name")))))
                 .then(Commands.argument("name", StringArgumentType.greedyString())
-                        .executes(ctx -> create(ctx, WorldType.NORMAL, StringArgumentType.getString(ctx, "name")))));
+                        .executes(ctx -> create(ctx, WorldType.VANILLA, StringArgumentType.getString(ctx, "name")))));
 
         dispatcher.register(Commands.literal("renameworld")
                 .then(Commands.argument("name", StringArgumentType.greedyString()).executes(WorldCommands::rename)));
