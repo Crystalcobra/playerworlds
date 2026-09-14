@@ -1,12 +1,17 @@
 package de.crystalcobra.playerworlds;
 
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+
+import javax.annotation.Nullable;
 
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.NbtUtils;
 import net.minecraft.nbt.Tag;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.saveddata.SavedData;
@@ -15,7 +20,31 @@ import net.minecraft.world.level.saveddata.SavedData;
 public class PlayerWorldsData extends SavedData {
     private static final String NAME = PlayerWorlds.MODID + "_worlds";
 
-    public record Entry(UUID owner, WorldType type, long seed) {}
+    public static final class Entry {
+        private final UUID owner;
+        private final WorldType type;
+        private final long seed;
+        private final Set<UUID> members = new LinkedHashSet<>();
+        private boolean locked = true;
+
+        public Entry(UUID owner, WorldType type, long seed) {
+            this.owner = owner;
+            this.type = type;
+            this.seed = seed;
+        }
+
+        public UUID owner() { return owner; }
+        public WorldType type() { return type; }
+        public long seed() { return seed; }
+        public Set<UUID> members() { return members; }
+        public boolean locked() { return locked; }
+        public void setLocked(boolean locked) { this.locked = locked; }
+
+        /** Whether {@code player} may enter this world. */
+        public boolean canEnter(UUID player) {
+            return !locked || owner.equals(player) || members.contains(player);
+        }
+    }
 
     private final Map<UUID, Entry> worlds = new HashMap<>();
 
@@ -28,6 +57,7 @@ public class PlayerWorldsData extends SavedData {
         return worlds;
     }
 
+    @Nullable
     public Entry get(UUID owner) {
         return worlds.get(owner);
     }
@@ -46,9 +76,12 @@ public class PlayerWorldsData extends SavedData {
         PlayerWorldsData data = new PlayerWorldsData();
         for (Tag t : tag.getList("worlds", Tag.TAG_COMPOUND)) {
             CompoundTag c = (CompoundTag) t;
-            UUID owner = c.getUUID("owner");
-            WorldType type = WorldType.byName(c.getString("type"));
-            data.worlds.put(owner, new Entry(owner, type, c.getLong("seed")));
+            Entry e = new Entry(c.getUUID("owner"), WorldType.byName(c.getString("type")), c.getLong("seed"));
+            e.locked = !c.contains("locked") || c.getBoolean("locked");
+            for (Tag m : c.getList("members", Tag.TAG_INT_ARRAY)) {
+                e.members.add(NbtUtils.loadUUID(m));
+            }
+            data.worlds.put(e.owner(), e);
         }
         return data;
     }
@@ -61,6 +94,12 @@ public class PlayerWorldsData extends SavedData {
             c.putUUID("owner", e.owner());
             c.putString("type", e.type().name());
             c.putLong("seed", e.seed());
+            c.putBoolean("locked", e.locked);
+            ListTag members = new ListTag();
+            for (UUID m : e.members) {
+                members.add(NbtUtils.createUUID(m));
+            }
+            c.put("members", members);
             list.add(c);
         }
         tag.put("worlds", list);

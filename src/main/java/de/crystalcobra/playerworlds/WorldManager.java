@@ -89,6 +89,51 @@ public final class WorldManager {
         return server.getLevel(keyFor(owner));
     }
 
+    /** Owner UUID if {@code level} is a player world, otherwise null. */
+    @Nullable
+    public static UUID ownerOf(ResourceKey<Level> level) {
+        if (!level.location().getNamespace().equals(PlayerWorlds.MODID)) {
+            return null;
+        }
+        try {
+            return UUID.fromString(level.location().getPath());
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    public static boolean canEnter(MinecraftServer server, ResourceKey<Level> level, UUID player) {
+        UUID owner = ownerOf(level);
+        if (owner == null) {
+            return true;
+        }
+        PlayerWorldsData.Entry entry = PlayerWorldsData.get(server).get(owner);
+        return entry == null || entry.canEnter(player);
+    }
+
+    /** Sends every player who is no longer allowed in the world back to the overworld spawn. */
+    public static void evictUnauthorized(MinecraftServer server, UUID owner) {
+        ServerLevel level = getWorld(server, owner);
+        PlayerWorldsData.Entry entry = PlayerWorldsData.get(server).get(owner);
+        if (level == null || entry == null) {
+            return;
+        }
+        for (ServerPlayer player : List.copyOf(level.players())) {
+            if (!entry.canEnter(player.getUUID())) {
+                toOverworldSpawn(server, player);
+                player.sendSystemMessage(Component.literal("Du wurdest aus dieser Welt entfernt.").withStyle(ChatFormatting.RED));
+            }
+        }
+        PENDING.removeIf(p -> p.level().equals(level.dimension()) && !entry.canEnter(p.player()));
+    }
+
+    public static void toOverworldSpawn(MinecraftServer server, ServerPlayer player) {
+        ServerLevel overworld = server.overworld();
+        BlockPos spawn = overworld.getSharedSpawnPos();
+        player.teleportTo(overworld, spawn.getX() + 0.5, spawn.getY(), spawn.getZ() + 0.5,
+                player.getYRot(), player.getXRot());
+    }
+
     /** Creates a brand-new world for {@code owner}; caller must ensure none exists yet. */
     public static ServerLevel createWorld(MinecraftServer server, UUID owner, WorldType type) {
         long seed = server.overworld().getRandom().nextLong();
@@ -134,12 +179,10 @@ public final class WorldManager {
         ResourceKey<Level> key = keyFor(owner);
         ServerLevel level = server.getLevel(key);
         if (level != null) {
-            ServerLevel overworld = server.overworld();
             for (ServerPlayer player : List.copyOf(level.players())) {
-                BlockPos spawn = overworld.getSharedSpawnPos();
-                player.teleportTo(overworld, spawn.getX() + 0.5, spawn.getY(), spawn.getZ() + 0.5,
-                        player.getYRot(), player.getXRot());
+                toOverworldSpawn(server, player);
             }
+            PENDING.removeIf(p -> p.level().equals(key));
             try {
                 level.save(null, false, true);
                 level.close();
@@ -170,7 +213,7 @@ public final class WorldManager {
         level.getChunkSource().addRegionTicket(SPAWN_TICKET, ChunkPos.ZERO, SPAWN_RADIUS + 1, ChunkPos.ZERO);
         PENDING.removeIf(p -> p.player().equals(player.getUUID()));
         PENDING.add(new PendingTeleport(player.getUUID(), level.dimension(), 0));
-        player.sendSystemMessage(Component.literal("Deine Welt wird generiert, bitte warten...").withStyle(ChatFormatting.YELLOW));
+        player.sendSystemMessage(Component.literal("Welt wird geladen, bitte warten...").withStyle(ChatFormatting.YELLOW));
     }
 
     public static void tick(MinecraftServer server) {
