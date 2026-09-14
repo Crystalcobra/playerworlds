@@ -30,12 +30,17 @@ import net.minecraft.server.level.progress.ChunkProgressListener;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.biome.BiomeManager;
+import net.minecraft.world.level.biome.BiomeSource;
+import net.minecraft.world.level.biome.MultiNoiseBiomeSource;
+import net.minecraft.world.level.biome.MultiNoiseBiomeSourceParameterLists;
 import net.minecraft.world.level.border.BorderChangeListener;
 import net.minecraft.world.level.chunk.ChunkGenerator;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.world.level.dimension.LevelStem;
 import net.minecraft.world.level.levelgen.FlatLevelSource;
 import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.level.levelgen.NoiseBasedChunkGenerator;
+import net.minecraft.world.level.levelgen.NoiseGeneratorSettings;
 import net.minecraft.world.level.levelgen.flat.FlatLevelGeneratorSettings;
 import net.minecraft.world.level.storage.DerivedLevelData;
 import net.neoforged.neoforge.common.NeoForge;
@@ -284,7 +289,20 @@ public final class WorldManager {
 
     private static ChunkGenerator generatorFor(MinecraftServer server, WorldType type) {
         return switch (type) {
-            case NORMAL -> overworldStem(server).generator();
+            case NORMAL -> {
+                ChunkGenerator overworld = overworldStem(server).generator();
+                if (overworld instanceof NoiseBasedChunkGenerator noise) {
+                    yield new NoiseBasedChunkGenerator(noise.getBiomeSource(), noise.generatorSettings());
+                }
+                yield overworld;
+            }
+            case VANILLA -> {
+                var presets = server.registryAccess().registryOrThrow(Registries.MULTI_NOISE_BIOME_SOURCE_PARAMETER_LIST);
+                var settings = server.registryAccess().registryOrThrow(Registries.NOISE_SETTINGS);
+                BiomeSource biomes = MultiNoiseBiomeSource.createFromList(
+                        presets.getOrThrow(MultiNoiseBiomeSourceParameterLists.OVERWORLD).parameters());
+                yield new NoiseBasedChunkGenerator(biomes, settings.getHolderOrThrow(NoiseGeneratorSettings.OVERWORLD));
+            }
             case FLAT -> new FlatLevelSource(FlatLevelGeneratorSettings.getDefault(
                     server.registryAccess().lookupOrThrow(Registries.BIOME),
                     server.registryAccess().lookupOrThrow(Registries.STRUCTURE_SET),

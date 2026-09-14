@@ -4,6 +4,7 @@ import java.util.Locale;
 
 public enum WorldType {
     NORMAL,
+    VANILLA,
     FLAT;
 
     public static WorldType byName(String name) {
