@@ -10,7 +10,7 @@ NeoForge-Mod für Minecraft 1.21.1 (z.B. All The Mods 10): Jeder Spieler bekommt
 | `/createworld <name>` | Erstellt deine Welt mit einem Namen (z.B. `/createworld Meine Insel`) |
 | `/createworld flat [name]` | Erstellt stattdessen eine Flachwelt |
 | `/renameworld <name>` | Benennt deine Welt um |
-| `/myworld` | Teleportiert dich in deine Welt |
+| `/tpworld` | Teleportiert dich in deine Welt |
 | `/deleteworld` | Fragt nach Bestätigung zum Löschen |
 | `/deleteworld confirm` | Löscht deine Welt endgültig (innerhalb von 30 Sekunden) |
 | `/worldinvite <spieler>` | Gibt einem Spieler Zugang zu deiner Welt |

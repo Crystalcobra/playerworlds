@@ -46,7 +46,7 @@ public final class WorldCommands {
         dispatcher.register(Commands.literal("renameworld")
                 .then(Commands.argument("name", StringArgumentType.greedyString()).executes(WorldCommands::rename)));
 
-        dispatcher.register(Commands.literal("myworld").executes(WorldCommands::teleport));
+        dispatcher.register(Commands.literal("tpworld").executes(WorldCommands::teleport));
 
         dispatcher.register(Commands.literal("deleteworld")
                 .executes(WorldCommands::requestDelete)
@@ -284,7 +284,7 @@ public final class WorldCommands {
         MinecraftServer server = ctx.getSource().getServer();
 
         if (WorldManager.hasWorld(server, player.getUUID())) {
-            fail(ctx, "Du hast bereits eine Welt. Nutze /myworld zum Teleportieren oder /deleteworld zum Löschen.");
+            fail(ctx, "Du hast bereits eine Welt. Nutze /tpworld zum Teleportieren oder /deleteworld zum Löschen.");
             return 0;
         }
         String name = "";
