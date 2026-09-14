@@ -135,9 +135,10 @@ public final class WorldManager {
     }
 
     /** Creates a brand-new world for {@code owner}; caller must ensure none exists yet. */
-    public static ServerLevel createWorld(MinecraftServer server, UUID owner, WorldType type) {
+    public static ServerLevel createWorld(MinecraftServer server, UUID owner, WorldType type, String name) {
         long seed = server.overworld().getRandom().nextLong();
         PlayerWorldsData.Entry entry = new PlayerWorldsData.Entry(owner, type, seed);
+        entry.setName(name);
         PlayerWorldsData.get(server).put(entry);
         return loadWorld(server, entry);
     }
@@ -241,6 +242,12 @@ public final class WorldManager {
             it.remove();
             BlockPos pos = findSafeSpawn(level);
             player.teleportTo(level, pos.getX() + 0.5, pos.getY(), pos.getZ() + 0.5, player.getYRot(), player.getXRot());
+            UUID owner = ownerOf(level.dimension());
+            PlayerWorldsData.Entry entry = owner == null ? null : PlayerWorldsData.get(server).get(owner);
+            if (entry != null) {
+                player.sendSystemMessage(Component.literal("Willkommen in \"" + WorldCommands.displayName(server, entry) + "\"!")
+                        .withStyle(ChatFormatting.GREEN));
+            }
         }
     }
 

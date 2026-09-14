@@ -26,6 +26,7 @@ public class PlayerWorldsData extends SavedData {
         private final long seed;
         private final Set<UUID> members = new LinkedHashSet<>();
         private boolean locked = true;
+        private String name = "";
 
         public Entry(UUID owner, WorldType type, long seed) {
             this.owner = owner;
@@ -39,6 +40,8 @@ public class PlayerWorldsData extends SavedData {
         public Set<UUID> members() { return members; }
         public boolean locked() { return locked; }
         public void setLocked(boolean locked) { this.locked = locked; }
+        public String name() { return name; }
+        public void setName(String name) { this.name = name; }
 
         /** Whether {@code player} may enter this world. */
         public boolean canEnter(UUID player) {
@@ -67,6 +70,17 @@ public class PlayerWorldsData extends SavedData {
         setDirty();
     }
 
+    /** Finds a world by its (case-insensitive) name. */
+    @Nullable
+    public Entry byName(String name) {
+        for (Entry e : worlds.values()) {
+            if (e.name.equalsIgnoreCase(name)) {
+                return e;
+            }
+        }
+        return null;
+    }
+
     public void remove(UUID owner) {
         worlds.remove(owner);
         setDirty();
@@ -78,6 +92,7 @@ public class PlayerWorldsData extends SavedData {
             CompoundTag c = (CompoundTag) t;
             Entry e = new Entry(c.getUUID("owner"), WorldType.byName(c.getString("type")), c.getLong("seed"));
             e.locked = !c.contains("locked") || c.getBoolean("locked");
+            e.name = c.getString("name");
             for (Tag m : c.getList("members", Tag.TAG_INT_ARRAY)) {
                 e.members.add(NbtUtils.loadUUID(m));
             }
@@ -95,6 +110,7 @@ public class PlayerWorldsData extends SavedData {
             c.putString("type", e.type().name());
             c.putLong("seed", e.seed());
             c.putBoolean("locked", e.locked);
+            c.putString("name", e.name);
             ListTag members = new ListTag();
             for (UUID m : e.members) {
                 members.add(NbtUtils.createUUID(m));

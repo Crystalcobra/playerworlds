@@ -31,9 +31,20 @@ public final class WorldCommands {
 
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(Commands.literal("createworld")
-                .executes(ctx -> create(ctx, WorldType.NORMAL))
-                .then(Commands.literal("normal").executes(ctx -> create(ctx, WorldType.NORMAL)))
-                .then(Commands.literal("flat").executes(ctx -> create(ctx, WorldType.FLAT))));
+                .executes(ctx -> create(ctx, WorldType.NORMAL, null))
+                .then(Commands.literal("normal")
+                        .executes(ctx -> create(ctx, WorldType.NORMAL, null))
+                        .then(Commands.argument("name", StringArgumentType.greedyString())
+                                .executes(ctx -> create(ctx, WorldType.NORMAL, StringArgumentType.getString(ctx, "name")))))
+                .then(Commands.literal("flat")
+                        .executes(ctx -> create(ctx, WorldType.FLAT, null))
+                        .then(Commands.argument("name", StringArgumentType.greedyString())
+                                .executes(ctx -> create(ctx, WorldType.FLAT, StringArgumentType.getString(ctx, "name")))))
+                .then(Commands.argument("name", StringArgumentType.greedyString())
+                        .executes(ctx -> create(ctx, WorldType.NORMAL, StringArgumentType.getString(ctx, "name")))));
+
+        dispatcher.register(Commands.literal("renameworld")
+                .then(Commands.argument("name", StringArgumentType.greedyString()).executes(WorldCommands::rename)));
 
         dispatcher.register(Commands.literal("myworld").executes(WorldCommands::teleport));
 
@@ -56,9 +67,62 @@ public final class WorldCommands {
         dispatcher.register(Commands.literal("unlockworld").executes(ctx -> setLocked(ctx, false)));
 
         dispatcher.register(Commands.literal("visitworld")
-                .then(Commands.argument("spieler", StringArgumentType.word())
-                        .suggests((ctx, b) -> SharedSuggestionProvider.suggest(ctx.getSource().getOnlinePlayerNames(), b))
+                .then(Commands.argument("welt", StringArgumentType.greedyString())
+                        .suggests((ctx, b) -> SharedSuggestionProvider.suggest(visitSuggestions(ctx), b))
                         .executes(WorldCommands::visit)));
+    }
+
+    private static final int MAX_NAME_LENGTH = 32;
+
+    @Nullable
+    private static String validateName(CommandContext<CommandSourceStack> ctx, MinecraftServer server, String name, UUID self) {
+        String trimmed = name.trim();
+        if (trimmed.isEmpty() || trimmed.length() > MAX_NAME_LENGTH) {
+            fail(ctx, "Der Name muss 1-" + MAX_NAME_LENGTH + " Zeichen lang sein.");
+            return null;
+        }
+        PlayerWorldsData.Entry other = PlayerWorldsData.get(server).byName(trimmed);
+        if (other != null && !other.owner().equals(self)) {
+            fail(ctx, "Eine Welt mit diesem Namen gibt es schon.");
+            return null;
+        }
+        return trimmed;
+    }
+
+    /** Display name of a world: its custom name, or "Welt von <Spieler>". */
+    public static String displayName(MinecraftServer server, PlayerWorldsData.Entry entry) {
+        return entry.name().isEmpty() ? "Welt von " + nameOf(server, entry.owner()) : entry.name();
+    }
+
+    /** Argument to pass to /visitworld for this world. */
+    private static String visitArg(MinecraftServer server, PlayerWorldsData.Entry entry) {
+        return entry.name().isEmpty() ? nameOf(server, entry.owner()) : entry.name();
+    }
+
+    private static int rename(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
+        ServerPlayer player = ctx.getSource().getPlayerOrException();
+        MinecraftServer server = ctx.getSource().getServer();
+        PlayerWorldsData.Entry entry = ownWorld(ctx, player);
+        if (entry == null) {
+            return 0;
+        }
+        String name = validateName(ctx, server, StringArgumentType.getString(ctx, "name"), player.getUUID());
+        if (name == null) {
+            return 0;
+        }
+        entry.setName(name);
+        PlayerWorldsData.get(server).setDirty();
+        ctx.getSource().sendSuccess(() -> Component.literal("Deine Welt heißt jetzt \"" + name + "\".").withStyle(ChatFormatting.GREEN), false);
+        return 1;
+    }
+
+    private static Iterable<String> visitSuggestions(CommandContext<CommandSourceStack> ctx) {
+        MinecraftServer server = ctx.getSource().getServer();
+        java.util.List<String> out = new java.util.ArrayList<>();
+        for (PlayerWorldsData.Entry e : PlayerWorldsData.get(server).worlds().values()) {
+            out.add(visitArg(server, e));
+        }
+        return out;
     }
 
     private static int invite(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
@@ -86,8 +150,9 @@ public final class WorldCommands {
                 .withStyle(ChatFormatting.GREEN), false);
         ServerPlayer online = server.getPlayerList().getPlayer(target.getId());
         if (online != null) {
+            String world = displayName(server, entry);
             online.sendSystemMessage(Component.literal(player.getName().getString()
-                    + " hat dich zu seiner Welt eingeladen. Betreten mit /visitworld " + player.getName().getString())
+                    + " hat dich zu \"" + world + "\" eingeladen. Betreten mit /visitworld " + visitArg(server, entry))
                     .withStyle(ChatFormatting.GREEN));
         }
         return 1;
@@ -122,7 +187,8 @@ public final class WorldCommands {
                 .map(id -> nameOf(ctx.getSource().getServer(), id))
                 .collect(Collectors.joining(", "));
         String state = entry.locked() ? "gesperrt (nur du und eingeladene Spieler)" : "offen (jeder darf rein)";
-        ctx.getSource().sendSuccess(() -> Component.literal("Deine Welt ist " + state + ". Eingeladen: "
+        String world = displayName(ctx.getSource().getServer(), entry);
+        ctx.getSource().sendSuccess(() -> Component.literal("\"" + world + "\" ist " + state + ". Eingeladen: "
                 + (names.isEmpty() ? "niemand" : names)).withStyle(ChatFormatting.AQUA), false);
         return 1;
     }
@@ -142,7 +208,7 @@ public final class WorldCommands {
                     "Deine Welt ist jetzt gesperrt. Nur du und eingeladene Spieler kommen rein.").withStyle(ChatFormatting.GREEN), false);
         } else {
             ctx.getSource().sendSuccess(() -> Component.literal(
-                    "Deine Welt ist jetzt offen. Jeder kann sie mit /visitworld " + player.getName().getString() + " betreten.")
+                    "Deine Welt ist jetzt offen. Jeder kann sie mit /visitworld " + visitArg(server, entry) + " betreten.")
                     .withStyle(ChatFormatting.GREEN), false);
         }
         return 1;
@@ -151,11 +217,15 @@ public final class WorldCommands {
     private static int visit(CommandContext<CommandSourceStack> ctx) throws CommandSyntaxException {
         ServerPlayer player = ctx.getSource().getPlayerOrException();
         MinecraftServer server = ctx.getSource().getServer();
-        GameProfile target = lookup(server, StringArgumentType.getString(ctx, "spieler"));
-        PlayerWorldsData.Entry entry = target == null ? null : PlayerWorldsData.get(server).get(target.getId());
-        ServerLevel level = target == null ? null : WorldManager.getWorld(server, target.getId());
+        String arg = StringArgumentType.getString(ctx, "welt").trim();
+        PlayerWorldsData.Entry entry = PlayerWorldsData.get(server).byName(arg);
+        if (entry == null) {
+            GameProfile target = lookup(server, arg);
+            entry = target == null ? null : PlayerWorldsData.get(server).get(target.getId());
+        }
+        ServerLevel level = entry == null ? null : WorldManager.getWorld(server, entry.owner());
         if (entry == null || level == null) {
-            fail(ctx, "Dieser Spieler hat keine Welt.");
+            fail(ctx, "Keine Welt mit diesem Namen oder Spieler gefunden.");
             return 0;
         }
         if (!entry.canEnter(player.getUUID())) {
@@ -209,7 +279,7 @@ public final class WorldCommands {
         return entry.members().stream().map(id -> nameOf(server, id)).toList();
     }
 
-    private static int create(CommandContext<CommandSourceStack> ctx, WorldType type) throws CommandSyntaxException {
+    private static int create(CommandContext<CommandSourceStack> ctx, WorldType type, @Nullable String rawName) throws CommandSyntaxException {
         ServerPlayer player = ctx.getSource().getPlayerOrException();
         MinecraftServer server = ctx.getSource().getServer();
 
@@ -217,9 +287,17 @@ public final class WorldCommands {
             fail(ctx, "Du hast bereits eine Welt. Nutze /myworld zum Teleportieren oder /deleteworld zum Löschen.");
             return 0;
         }
+        String name = "";
+        if (rawName != null) {
+            name = validateName(ctx, server, rawName, player.getUUID());
+            if (name == null) {
+                return 0;
+            }
+        }
 
-        ctx.getSource().sendSuccess(() -> Component.literal("Deine Welt wurde erstellt!").withStyle(ChatFormatting.GREEN), false);
-        ServerLevel level = WorldManager.createWorld(server, player.getUUID(), type);
+        String shown = name.isEmpty() ? "Deine Welt" : "Deine Welt \"" + name + "\"";
+        ctx.getSource().sendSuccess(() -> Component.literal(shown + " wurde erstellt!").withStyle(ChatFormatting.GREEN), false);
+        ServerLevel level = WorldManager.createWorld(server, player.getUUID(), type, name);
         WorldManager.teleportToWorld(player, level);
         return 1;
     }
